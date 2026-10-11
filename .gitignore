@@ -1,0 +1,11 @@
+node_modules
+.next
+.vercel
+*.db
+*.db-journal
+.env
+.env.*
+!.env.example
+dev.log
+server.log
+.DS_Store

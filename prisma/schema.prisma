@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String
+  phone         String?
+  passwordHash  String
+  role          String         @default("CUSTOMER") // CUSTOMER | MANAGER | OWNER
+  status        String         @default("ACTIVE") // ACTIVE | SUSPENDED
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  orders        Order[]
+  notifications Notification[]
+}
+
+model Invitation {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  email     String
+  role      String    @default("MANAGER")
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  createdBy String
+  createdAt DateTime  @default(now())
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  italianName String?
+  description String?
+  image       String?
+  sortOrder   Int        @default(0)
+  items       MenuItem[]
+}
+
+model MenuItem {
+  id             String                  @id @default(cuid())
+  categoryId     String
+  category       Category                @relation(fields: [categoryId], references: [id])
+  name           String
+  description    String?
+  basePrice      Float?
+  pricePending   Boolean                 @default(false)
+  imageUrl       String?
+  available      Boolean                 @default(true)
+  popular        Boolean                 @default(false)
+  isAlcohol      Boolean                 @default(false)
+  needsSizeTier  Boolean                 @default(false) // topping price depends on selected size variant
+  sortOrder      Int                     @default(0)
+  variants       ItemVariant[]
+  modifierGroups MenuItemModifierGroup[]
+  orderItems     OrderItem[]
+}
+
+model ItemVariant {
+  id         String   @id @default(cuid())
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  name       String
+  price      Float
+  isDefault  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+}
+
+model ModifierGroup {
+  id            String                  @id @default(cuid())
+  key           String                  @unique
+  name          String
+  minSelect     Int                     @default(0)
+  maxSelect     Int                     @default(1)
+  required      Boolean                 @default(false)
+  includedCount Int                     @default(0) // N cheapest selections included free (e.g. calzone 1st topping)
+  modifiers     Modifier[]
+  items         MenuItemModifierGroup[]
+}
+
+model Modifier {
+  id         String        @id @default(cuid())
+  groupId    String
+  group      ModifierGroup @relation(fields: [groupId], references: [id])
+  name       String
+  priceDelta Float         @default(0)
+  tierPrices String? // JSON {"SMALL":1.95,"MEDIUM":2.25,"LARGE":2.50,"SICILIAN":3.00} for size-tiered toppings
+  sortOrder  Int           @default(0)
+}
+
+model MenuItemModifierGroup {
+  menuItemId      String
+  modifierGroupId String
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+  sortOrder       Int           @default(0)
+
+  @@id([menuItemId, modifierGroupId])
+}
+
+model Order {
+  id             String             @id @default(cuid())
+  orderNumber    String             @unique
+  accessToken    String
+  idempotencyKey String             @unique
+  userId         String?
+  user           User?              @relation(fields: [userId], references: [id])
+  customerName   String
+  phone          String
+  email          String?
+  fulfillment    String // PICKUP | DELIVERY
+  address        String?
+  orderNotes     String?
+  allergyNotes   String?
+  status         String             @default("AWAITING_PAYMENT")
+  paymentStatus  String             @default("UNPAID") // UNPAID | UNDER_REVIEW | CONFIRMED | PAY_ON_SITE
+  paymentMethod  String // PAY_ON_SITE | BANK_TRANSFER
+  subtotal       Float
+  taxRate        Float              @default(0)
+  taxAmount      Float              @default(0)
+  deliveryFee    Float              @default(0)
+  total          Float
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  items          OrderItem[]
+  payments       PaymentSubmission[]
+  notifications  Notification[]
+}
+
+model OrderItem {
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id])
+  menuItemId  String?
+  menuItem    MenuItem? @relation(fields: [menuItemId], references: [id])
+  name        String // snapshot
+  variantName String? // snapshot
+  unitPrice   Float // snapshot incl. modifiers
+  quantity    Int
+  selections  String? // JSON [{groupName, name, price}]
+  notes       String?
+  lineTotal   Float
+}
+
+model PaymentSubmission {
+  id             String    @id @default(cuid())
+  orderId        String
+  order          Order     @relation(fields: [orderId], references: [id])
+  method         String // BANK_TRANSFER
+  reference      String
+  amount         Float?
+  note           String?
+  status         String    @default("UNDER_REVIEW") // UNDER_REVIEW | CONFIRMED | REJECTED
+  submittedAt    DateTime  @default(now())
+  reviewedById   String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  audience  String   @default("CUSTOMER") // CUSTOMER | STAFF
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorEmail String
+  action     String
+  entity     String
+  entityId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
